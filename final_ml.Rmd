@@ -1,0 +1,428 @@
+---
+title: "ml_final_project"
+author: "Ruchen Cai"
+date: "3/16/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## import and clean the data
+
+```{r}
+library(tidyverse)
+load(file='nhanes2003-2004.rda')
+
+# remove participants younger than 50 yo
+NHANES.data <- subset(nhanes2003_2004, as.numeric(nhanes2003_2004$RIDAGEEX) > (50*12-1))
+
+# make a matrix that contains only important predictors, excluding participants with missing data
+variables <- c("RIDAGEYR", "RIAGENDR", "BPQ010", "BPQ060", "DIQ010", "DIQ050", "DIQ090", "MCQ010", "MCQ053", "MCQ160A", "MCQ160B", "MCQ160K", "MCQ160L", "BMXWAIST", "MCQ160M", "MCQ220", "MCQ245A", "MCQ250A", "MCQ250B", "MCQ250C", "MCQ250E", "MCQ250F", "MCQ250G", "MCQ265", "SSQ011", "SSQ051", "WHQ030", "WHQ040", "LBXRDW", "HSD010", "BPXPULS", "BPXML1", "VIQ200", "BMXBMI", "BPXSY1", "BPXDI1","mortstat")
+
+NHANES.data <- na.omit(NHANES.data[variables])
+
+# change all values to type numeric
+for(i in 1:length(NHANES.data[1,])){
+NHANES.data[,i] <- as.numeric(NHANES.data[,i])
+}
+
+```
+
+
+```{r}
+summary(NHANES.data)
+```
+
+## split the dataset into training and testing set
+
+```{r}
+library(caTools)
+set.seed(209123)
+
+train <- sample.split(NHANES.data$RIDAGEYR, SplitRatio = 0.7)
+NHANES.training <- subset(NHANES.data,train==TRUE)
+NHANES.testing <- subset(NHANES.data,train==FALSE)
+
+testing.mortstat <- NHANES.testing$mortstat
+```
+
+
+## Model1: logistic regression
+
+```{r}
+glm.fits <- glm(mortstat ~ ., NHANES.training, family=binomial)
+glm.probs <- predict(glm.fits, NHANES.testing, type = "response")
+glm.pred <- rep(0,410)
+glm.pred[glm.probs > .5] <- 1
+```
+
+
+```{r}
+summary(glm.fits)
+```
+
+According to logistic regression, RIDAGEYR, RIAGENDR, MCQ160B, LBXRDW, and BPXPULS significantly affect the results.
+
+
+```{r}
+# test for sensitivity and specificity
+conf.logistic <- table(glm.pred,testing.mortstat)
+conf.logistic
+sens.logistic <- conf.logistic[1,1]/(conf.logistic[1,1]+conf.logistic[1,2])
+sens.logistic
+spec.logistic <- conf.logistic[2,2]/(conf.logistic[2,1]+conf.logistic[2,2])
+spec.logistic
+
+# testing error rate
+err.logistic <- mean(glm.pred!=testing.mortstat)
+err.logistic
+```
+
+The sensiticity of logistic regression model is 85.97%. 
+The specificity of logistic regression model is 50.00%.
+The testing error rate of logistic regression model is 15.61%
+
+
+## Model2: LDA
+
+```{r}
+library(MASS)
+
+lda.fits <- lda(mortstat ~ ., data = NHANES.training)
+lda.pred <- predict(lda.fits, NHANES.testing)
+lda.class <- lda.pred$class
+```
+
+
+```{r}
+# test for sensitivity and specificity
+conf.lda <- table(lda.class,testing.mortstat)
+conf.lda
+sens.lda <- conf.lda[1,1]/(conf.lda[1,1]+conf.lda[1,2])
+sens.lda
+spec.lda <- conf.lda[2,2]/(conf.lda[2,1]+conf.lda[2,2])
+spec.lda
+
+# testing error rate
+testing.err.lda <- mean(testing.mortstat!=lda.class)
+testing.err.lda
+```
+
+The sensiticity of LDA model is 85.86%. 
+The specificity of LDA model is 57.14%.
+The testing error rate of LDA model is 15.12%
+
+
+
+## Model3: QDA
+
+```{r}
+qda.fits <- qda(mortstat ~ ., data = NHANES.training)
+qda.pred <- predict(qda.fits, NHANES.testing)
+qda.class <- qda.pred$class
+```
+
+
+```{r}
+# test for sensitivity and specificity
+conf.qda <- table(qda.class,testing.mortstat)
+conf.qda
+sens.qda <- conf.qda[1,1]/(conf.qda[1,1]+conf.qda[1,2])
+sens.qda
+spec.qda <- conf.qda[2,2]/(conf.qda[2,1]+conf.qda[2,2])
+spec.qda
+
+# testing error rate
+testing.err.qda <- mean(testing.mortstat!=qda.class)
+testing.err.qda
+```
+
+The sensiticity of QDA model is 87.11%. 
+The specificity of QDA model is 33.96%.
+The testing error rate of QDA model is 19.76%
+
+
+
+## Model4: Lasso
+
+```{r}
+library(glmnet)
+
+x.train <- model.matrix(mortstat ~., data = NHANES.training)[,-1]
+y.train <- NHANES.training$mortstat
+
+x.test <- model.matrix(mortstat ~ ., data = NHANES.testing)[,-1]
+y.test <- NHANES.testing$mortstat
+
+#grid <- 10^seq(10,-2,length=100)
+
+cv.model <- cv.glmnet(x.train,y.train,alpha=1)
+best.lambda.lasso <- cv.model$lambda.min
+```
+
+
+```{r}
+lasso.mod <- glmnet(x.train, y.train,alpha=1,lambda=best.lambda.lasso)
+lasso.val <- as.numeric(predict(lasso.mod, x.test,s=best.lambda.lasso,type="class"))
+lasso.pred <- rep(0,410)
+lasso.pred[lasso.val > .5] <- 1
+```
+
+
+```{r}
+# test for sensitivity and specificity
+ conf.lasso <- table(lasso.pred,y.test)
+ conf.lasso
+ sens.lasso <- conf.lasso[1,1]/(conf.lasso[1,1]+conf.lasso[1,2])
+ sens.lasso
+ spec.lasso <- conf.lasso[2,2]/(conf.lasso[2,1]+conf.lasso[2,2])
+ spec.lasso
+
+# MSE
+err.lasso <- mean(lasso.pred!=y.test)
+err.lasso
+```
+
+The sensiticity of QDA model is 84.77%. 
+The specificity of QDA model is 66.67%.
+The testing error rate of QDA model is 15.37%
+
+
+
+## Model 5-7: SVM
+
+```{r}
+library(e1071)
+set.seed(283)
+
+# linear kernel
+tune.out.linear <- tune(svm, mortstat~., data=NHANES.training, kernel="linear",ranges = list(cost=c(0.001, 0.01,0.1,1,10,100,1000)))
+
+summary(tune.out.linear)
+
+```
+
+
+```{r}
+tune.out.linear$best.model
+```
+
+
+```{r}
+# svm, linear, cost = 1000
+svm.linear <- svm(mortstat ~., data=NHANES.training, kernel ="linear",cost=1000,type="C-classification")
+svm.linear.pred <- predict(svm.linear, NHANES.testing)
+
+# test for sensitivity and specificity
+conf.svm.lin <- table(svm.linear.pred,testing.mortstat)
+conf.svm.lin
+sens.svm.lin <- conf.svm.lin[1,1]/(conf.svm.lin[1,1]+conf.svm.lin[1,2])
+sens.svm.lin
+spec.svm.lin <- conf.svm.lin[2,2]/(conf.svm.lin[2,1]+conf.svm.lin[2,2])
+spec.svm.lin
+
+# testing error rate
+err.svm.lin <- mean((svm.linear.pred!=testing.mortstat))
+err.svm.lin
+```
+
+The sensiticity of SVM model using linear kernel is 84.73%. 
+The specificity of SVM model using linear kernel is 50.00%.
+The testing error of SVM model using linear kernel is 15.61%
+
+
+```{r}
+# radial kernel
+set.seed(32989)
+tune.out.radial <- tune(svm, mortstat~., data=NHANES.training, kernel ="radial", ranges =list(cost=c(0.001, 0.01,0.1 ,1 ,10 ,100 ,1000),gamma=c(0.5,1,2,3,4) ))
+
+summary(tune.out.radial)
+```
+
+```{r}
+tune.out.radial$best.model
+```
+
+
+```{r}
+set.seed(427)
+
+# svm, radial, cost = 10, gamma=3
+svm.radial <- svm(mortstat ~., data=NHANES.training, kernel ="radial",cost=10,gamma=3,type="C-classification")
+svm.radial.pred <- predict(svm.radial, NHANES.testing)
+
+# test for sensitivity and specificity
+conf.svm.rad <- table(svm.radial.pred,testing.mortstat)
+conf.svm.rad
+sens.svm.rad <- conf.svm.rad[1,1]/(conf.svm.rad[1,1]+conf.svm.rad[1,2])
+sens.svm.rad
+spec.svm.rad <- conf.svm.rad[2,2]/(conf.svm.rad[2,1]+conf.svm.rad[2,2])
+spec.svm.rad
+
+# testing error rate
+err.svm.rad <- mean((svm.radial.pred!=testing.mortstat))
+err.svm.rad
+```
+
+The sensiticity of SVM model using radial kernel is 84.39%. 
+The specificity of SVM model using radial kernel is unknown since the model classify all cases as alive.
+The testing error of SVM model using radial kernel is 15.61%
+
+
+
+```{r}
+# polynomial kernel
+set.seed(2987)
+tune.out.poly <- tune(svm, mortstat~., data=NHANES.training, , kernel ="polynomial", ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100), degree=c(1,2,3,4,5)))
+
+summary(tune.out.poly)
+```
+
+
+```{r}
+tune.out.poly$best.model
+```
+
+
+```{r}
+# svm, polynomial, cost = 1, degree=3
+svm.poly <- svm(mortstat ~., data=NHANES.training, kernel ="polynomial",cost=1,degree=3,type="C-classification")
+svm.poly.pred <- predict(svm.poly, NHANES.testing)
+
+# test for sensitivity and specificity
+conf.svm.poly <- table(svm.poly.pred,testing.mortstat)
+conf.svm.poly
+sens.svm.poly <- conf.svm.poly[1,1]/(conf.svm.poly[1,1]+conf.svm.poly[1,2])
+sens.svm.poly
+spec.svm.poly <- conf.svm.poly[2,2]/(conf.svm.poly[2,1]+conf.svm.poly[2,2])
+spec.svm.poly
+
+# testing error rate
+err.svm.poly <- mean((svm.poly.pred!=testing.mortstat))
+err.svm.poly
+```
+
+The sensiticity of SVM model using polynomial kernel is 84.92%. 
+The specificity of SVM model using polynomial kernel is 33.33%.
+The testing error of SVM model using polynomial kernel is 16.59%
+
+
+
+## Model 8&9: Tree-based methods
+
+# bagging
+```{r}
+library(tree)
+library(randomForest)
+set.seed(7321)
+
+bag.mod <- randomForest(mortstat~., NHANES.training, mtry=36, ntree=100)
+yhat.bag <- predict(bag.mod, NHANES.testing)
+
+yhat.pred <- rep(0,410)
+yhat.pred[yhat.bag > .5] <- 1
+```
+
+```{r}
+# test for sensitivity and specificity
+conf.bag <- table(yhat.pred,testing.mortstat)
+conf.bag
+sens.bag <- conf.bag[1,1]/(conf.bag[1,1]+conf.bag[1,2])
+sens.bag
+spec.bag <- conf.bag[2,2]/(conf.bag[2,1]+conf.bag[2,2])
+spec.bag
+
+# testing error rate
+err.bag <- mean(yhat.pred!=testing.mortstat)
+err.bag
+```
+
+The sensiticity using bagging is 87.63%. 
+The specificity using bagging is 56.67%.
+The testing error using bagging is 14.63%.
+
+
+
+## boosting
+
+```{r}
+library(gbm)
+set.seed(3253)
+
+a <- seq(-10, -1, by=0.5)
+lambdas <- 10^a
+MSE.training <- c()
+MSE.testing <- c()
+
+for (i in 1:length(lambdas)){
+boosting.mod <- gbm(mortstat~., data = NHANES.training, distribution = "gaussian", n.trees = 1000, interaction.depth = 4, shrinkage = lambdas[i])
+
+boosting.training.pred <- predict(boosting.mod, NHANES.training,n.trees=1000)
+boosting.testing.pred <- predict(boosting.mod, NHANES.testing,n.trees=1000)
+
+MSE.training[i] <- mean((NHANES.training$mortstat-boosting.training.pred)^2)
+MSE.testing[i] <- mean((testing.mortstat-boosting.testing.pred)^2)
+}
+
+```
+
+
+
+```{r}
+boosting.best <- gbm(mortstat~., data = NHANES.training, distribution = "gaussian", n.trees = 1000, interaction.depth = 4, shrinkage = lambdas[which.min(MSE.testing)])
+
+summary(boosting.best)
+```
+
+
+```{r}
+boosting.probs <- predict(boosting.best, NHANES.testing, n.trees=1000)
+boosting.pred <- rep(0,410)
+boosting.pred[boosting.probs > .5] <- 1
+```
+
+
+```{r}
+# test for sensitivity and specificity
+conf.boost <- table(boosting.pred,testing.mortstat)
+conf.boost
+sens.boost <- conf.boost[1,1]/(conf.boost[1,1]+conf.boost[1,2])
+sens.boost
+spec.boost <- conf.boost[2,2]/(conf.boost[2,1]+conf.boost[2,2])
+spec.boost
+
+# testing error rate
+err.boost <- mean(boosting.pred!=testing.mortstat)
+err.boost
+```
+
+The sensiticity using boosting is 87.02%. 
+The specificity using boosting is 76.47%.
+The testing error using boosting is 13.41%.
+
+
+## Comparing model evaluations
+
+```{r}
+a <- rbind(c(err.logistic, testing.err.lda, testing.err.qda, err.lasso, err.svm.lin, err.svm.rad, err.svm.poly, err.bag,err.boost),
+               c(sens.logistic, sens.lda, sens.qda, sens.lasso, sens.svm.lin, sens.svm.rad, sens.svm.poly, sens.bag, sens.boost),
+               c(spec.logistic, spec.lda, spec.qda, spec.lasso, spec.svm.lin, spec.svm.rad, spec.svm.poly, spec.bag, spec.boost))
+print(a)
+```
+
+The results show testing error rate, sensetivity, and specificity for the 9 models respectively, using the list of 36 predictors. Model 8 (bagging) has the highest sensitivity, model 9 (boosting) has the highest specificity as well as the lowest error rate (highest accuracy). Overall, boosting method is optimal for classifing mortatily in the NHANES dataset.
+
+The boosting model achieves sensitivity of 87.02% and specificity of 76.47%, with a testing error rate of 13.41%. Using this model, the top 5 important variables in prediction are: "RIDAGEYR", "LBXRDW", "HSD010", "BMXBMI", and "BPXDI1". 
+
+
+
+
+
+
+
+
