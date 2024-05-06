@@ -3,8 +3,7 @@ title: "ml_final_project"
 author: "Ruchen Cai"
 date: "3/16/2022"
 output:
-  html_document: default
-  pdf_document: default
+  github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -199,17 +198,25 @@ The testing error rate of QDA model is 15.37%
 ```{r}
 library(e1071)
 set.seed(283)
-
-# linear kernel
-tune.out.linear <- tune(svm, mortstat~., data=NHANES.training, kernel="linear",ranges = list(cost=c(0.001, 0.01,0.1,1,10,100,1000)))
-
-summary(tune.out.linear)
+# 
+# # Adjust the tolerance and maximum number of iterations
+# svm_control <- list(tolerance = 0.01, max_iter = 5000)
+# 
+# # linear kernel
+# tune.out.linear <- tune(svm,
+#                         mortstat ~ .,
+#                         data = NHANES.training,
+#                         kernel = "linear",
+#                         ranges = list(cost = c(0.001, 0.01, 0.1, 1, 10, 100, 1000)),
+#                         control = svm_control)
+# 
+# summary(tune.out.linear)
 
 ```
 
 
 ```{r}
-tune.out.linear$best.model
+#tune.out.linear$best.model
 ```
 
 
