@@ -1,1 +1,1 @@
-For a better visual display of the markdown, see final_ml.md.
+For a better visual display of the markdown, please see final_ml.md.
